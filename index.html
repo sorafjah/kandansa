@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>寒暖差疲労クイズ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
+<style>
+/* Layout: 1画面1ねらいの電子黒板。上に進行ボタン、中央に問題/図つき解説、下に大きい操作ボタン。
+   色は温度(寒=青 / 熱=橙)と正解(緑)だけに使い、白黒印刷や色覚差でも形と文字で読めるようにする。 */
+:root {
+  --bg: #F3F6F8;
+  --surface: #FFFFFF;
+  --ink: #12202C;
+  --muted: #475866;
+  --line: #BFCBD4;
+  --cold: #1B5E8C;
+  --heat: #BF4318;
+  --sun: #F2B705;
+  --good: #16784A;
+  --good-bg: #DFF2E7;
+  --sel: #E1EDF6;
+  --warm-soft: #F8DDD0;
+  --font: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1720; --surface: #16232E; --ink: #EDF3F7; --muted: #A8B8C5; --line: #34485A;
+    --cold: #74B8E8; --heat: #F28C5E; --sun: #F6CB45; --good: #5FD596; --good-bg: #12382A;
+    --sel: #1A3347; --warm-soft: #4D2B1E; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1720; --surface: #16232E; --ink: #EDF3F7; --muted: #A8B8C5; --line: #34485A;
+  --cold: #74B8E8; --heat: #F28C5E; --sun: #F6CB45; --good: #5FD596; --good-bg: #12382A;
+  --sel: #1A3347; --warm-soft: #4D2B1E; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  line-height: 1.9;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+ruby { ruby-position: over; }
+rt { font-size: .46em; font-weight: 400; letter-spacing: 0; line-height: 1; }
+.noruby rt { display: none; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 4px solid var(--cold); outline-offset: 3px; }
+
+#app { height: 100%; display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- 上の帯 ---- */
+.top { display: flex; align-items: center; gap: 14px; padding-top: 8px; flex-wrap: wrap; }
+.brand { font-weight: 700; font-size: clamp(16px, 2.3vmin, 28px); white-space: nowrap; }
+.prog { display: flex; gap: 6px; flex: 1; min-width: 240px; }
+.seg {
+  flex: 1; min-width: 0; min-height: 42px; padding: 0 4px;
+  border: 2px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 10px; cursor: pointer; line-height: 1.2;
+  font-size: clamp(14px, 2.1vmin, 24px); font-weight: 700;
+}
+.seg.done { border-color: var(--ink); }
+.seg[aria-current="step"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.tog {
+  min-height: 42px; padding: 0 16px; border: 2px solid var(--ink); background: var(--surface);
+  border-radius: 10px; cursor: pointer; font-weight: 700; font-size: clamp(14px, 2.1vmin, 24px); line-height: 1.2;
+}
+
+/* ---- 中央 ---- */
+.stage { flex: 1; min-height: 0; overflow: auto; padding: 6px 2px 10px; }
+.stage > * { animation: in .25s ease-out; }
+@keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .stage > * { animation: none; } }
+
+.h1 { margin: 0 0 6px; font-size: clamp(30px, 6.4vmin, 76px); line-height: 1.7; }
+.lead { margin: 0 0 12px; font-size: clamp(19px, 3.3vmin, 40px); line-height: 2; }
+.lead.strong { font-weight: 700; text-wrap: balance; }
+.chips { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.chips li {
+  border: 3px solid var(--ink); border-radius: 999px; background: var(--surface);
+  padding: 0 20px; font-weight: 700; font-size: clamp(18px, 3vmin, 36px); line-height: 1.9;
+}
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(16px, 3vmin, 40px); align-items: center; }
+.grid.fig-first { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+@media (max-width: 900px) { .grid, .grid.fig-first { grid-template-columns: minmax(0, 1fr); } }
+
+figure.figbox { margin: 0; background: var(--surface); border: 2px solid var(--line); border-radius: 16px; padding: 12px 12px 6px; }
+figure.figbox figcaption { color: var(--muted); font-size: clamp(14px, 2.1vmin, 24px); padding: 2px 4px 6px; line-height: 1.9; }
+svg.fig { width: 100%; height: auto; display: block; color: var(--ink); max-height: 62vh; }
+.fig text { fill: currentColor; font-family: var(--font); font-weight: 700; }
+.fig .m { font-weight: 400; fill: var(--muted); }
+.fig .o { fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.fig .s { fill: var(--surface); stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- 問題画面 ---- */
+.qhead { display: flex; gap: 20px; align-items: flex-start; }
+.qbadge {
+  flex: none; border: 4px solid var(--ink); border-radius: 14px; background: var(--surface);
+  padding: 0 20px; font-weight: 700; font-size: clamp(22px, 4.2vmin, 50px); line-height: 1.9;
+}
+.stem { margin: 0; font-weight: 700; font-size: clamp(21px, 4.1vmin, 50px); line-height: 1.95; }
+.opts { display: grid; gap: clamp(10px, 2vmin, 22px); margin-top: clamp(10px, 2.4vmin, 28px); }
+.opt {
+  display: flex; align-items: center; gap: 22px; width: 100%; text-align: left;
+  font-size: clamp(20px, 3.9vmin, 46px); line-height: 1.9; font-weight: 700;
+  border: 3px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 18px; padding: clamp(2px, 1vmin, 12px) 24px; cursor: pointer;
+}
+.opt .num {
+  flex: none; width: 1.9em; height: 1.9em; border-radius: 50%; border: 4px solid var(--ink);
+  display: grid; place-items: center; line-height: 1;
+}
+.opt .txt { flex: 1; min-width: 0; }
+.opt.sel { border-color: var(--cold); background: var(--sel); box-shadow: inset 0 0 0 3px var(--cold); }
+.opt.sel::after { content: "✔"; font-size: .9em; color: var(--cold); }
+.hint { margin: 10px 4px 0; color: var(--muted); font-size: clamp(14px, 2.2vmin, 26px); }
+
+/* ---- 解説画面 ---- */
+.ans {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  border: 4px solid var(--good); background: var(--good-bg); border-radius: 18px;
+  padding: clamp(0px, .6vmin, 8px) 22px;
+}
+.ans-label { font-weight: 700; font-size: clamp(20px, 3.4vmin, 42px); color: var(--good); }
+.ans-num {
+  width: 1.9em; height: 1.9em; display: grid; place-items: center; line-height: 1;
+  font-weight: 700; font-size: clamp(22px, 4vmin, 48px); border-radius: 50%;
+  border: 4px solid var(--good); box-shadow: 0 0 0 5px var(--good-bg), 0 0 0 8px var(--good);
+  margin: 0 8px;
+}
+.ans-txt { flex: 1; min-width: 200px; font-weight: 700; font-size: clamp(20px, 3.8vmin, 46px); line-height: 1.95; }
+.ans + .grid { margin-top: clamp(10px, 2vmin, 24px); }
+.exp { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: clamp(19px, 3.25vmin, 40px); line-height: 2; }
+.exp li { display: flex; gap: 14px; align-items: baseline; }
+.exp li::before { content: ""; flex: none; width: .55em; height: .55em; border-radius: 50%; background: var(--cold); transform: translateY(-.05em); }
+.note {
+  margin: 12px 0 0; padding: 6px 20px; border-radius: 14px; background: var(--sel);
+  font-size: clamp(17px, 2.7vmin, 32px); line-height: 2;
+}
+.note b { margin-right: .5em; }
+
+/* ---- まとめ ---- */
+.cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: clamp(10px, 1.8vmin, 22px); margin-top: 12px; }
+@media (max-width: 1100px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  border: 3px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink);
+  padding: 12px 10px 10px; cursor: pointer; font-weight: 700; font-size: clamp(17px, 2.9vmin, 34px); line-height: 1.95;
+}
+.card svg { width: clamp(70px, 14vmin, 150px); height: auto; color: var(--ink); }
+.card.sel { border-color: var(--cold); background: var(--sel); box-shadow: inset 0 0 0 3px var(--cold); }
+.card .chk { min-height: 1.4em; color: var(--cold); font-size: .9em; line-height: 1.4; }
+
+/* ---- 下の操作ボタン ---- */
+.nav { display: flex; gap: 14px; justify-content: space-between; padding-bottom: 10px; }
+.btn {
+  min-height: clamp(56px, 9vmin, 96px); padding: 0 clamp(20px, 4vmin, 48px);
+  border: 3px solid var(--ink); border-radius: 18px; background: var(--surface); color: var(--ink);
+  font-weight: 700; font-size: clamp(20px, 3.4vmin, 40px); line-height: 1.6; cursor: pointer;
+}
+.btn.primary { background: var(--ink); color: var(--bg); margin-left: auto; min-width: min(46%, 22em); }
+.btn[hidden] { display: none; }
+</style>
+</head>
+<body>
+
+
+<!-- 共通の部品(矢じるし・斜線・アイコン) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10Z" fill="currentColor"/>
+    </marker>
+    <pattern id="hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="12" height="12" style="fill:var(--surface)"/>
+      <line x1="0" y1="0" x2="0" y2="12" style="stroke:var(--heat);stroke-width:5"/>
+    </pattern>
+    <symbol id="i-sun" viewBox="-70 -70 140 140">
+      <circle r="24" style="fill:var(--sun)" stroke="currentColor" stroke-width="4"/>
+      <path d="M34 0H54M-34 0H-54M0 34V54M0 -34V-54M24 24L38 38M-24 24L-38 38M24 -24L38 -38M-24 -24L-38 -38" stroke="currentColor" stroke-width="5" stroke-linecap="round" fill="none"/>
+    </symbol>
+    <symbol id="i-bowl" viewBox="-70 -70 140 140">
+      <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M-50 0H50Q50 48 0 48Q-50 48 -50 0Z" style="fill:var(--surface)"/>
+        <path d="M-38 0Q0 -40 38 0" style="fill:var(--surface)"/>
+        <path d="M-14 -46q-8 -8 0 -16M14 -46q-8 -8 0 -16"/>
+      </g>
+    </symbol>
+    <symbol id="i-tshirt" viewBox="-70 -70 140 140">
+      <path d="M-44 -50L-20 -62Q0 -46 20 -62L44 -50L62 -16L40 -6L32 -18V52H-32V-18L-40 -6L-62 -16Z" style="fill:var(--surface)" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-cardi" viewBox="-70 -70 140 140">
+      <g stroke="currentColor" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M-46 -52L-18 -62L-12 -48H12L18 -62L46 -52L66 30L44 36L34 -6V54H-34V-6L-44 36L-66 30Z" style="fill:var(--warm-soft)"/>
+        <path d="M0 -48V54" fill="none"/>
+        <circle cx="-10" cy="-14" r="3.5" fill="currentColor"/>
+        <circle cx="-10" cy="10" r="3.5" fill="currentColor"/>
+        <circle cx="-10" cy="34" r="3.5" fill="currentColor"/>
+      </g>
+    </symbol>
+    <symbol id="i-tub" viewBox="-70 -70 140 140">
+      <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M-58 -4H58V14Q58 46 26 46H-26Q-58 46 -58 14Z" style="fill:var(--sel)"/>
+        <path d="M-48 8q12 -8 24 0t24 0t24 0t24 0"/>
+        <path d="M-18 -18q-8 -9 0 -18q8 -9 0 -18M18 -18q-8 -9 0 -18q8 -9 0 -18"/>
+      </g>
+    </symbol>
+    <symbol id="i-neck" viewBox="-70 -70 140 140">
+      <g stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="0" cy="-34" r="22" style="fill:var(--surface)"/>
+        <path d="M-54 60Q-54 18 0 18Q54 18 54 60" style="fill:var(--surface)"/>
+        <rect x="-30" y="6" width="60" height="20" rx="10" style="fill:var(--heat)"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<div id="app">
+  <header class="top">
+    <div class="brand" id="brand"></div>
+    <nav class="prog" id="prog" aria-label="すすみぐあい"></nav>
+    <button class="tog" id="tog" type="button" aria-pressed="true">ふりがな あり</button>
+  </header>
+  <main class="stage" id="stage"></main>
+  <footer class="nav">
+    <button class="btn" id="prev" type="button">もどる</button>
+    <button class="btn primary" id="next" type="button"></button>
+  </footer>
+</div>
+
+<script>
+/* {漢字|ふりがな} を ruby に変換 */
+var rb = function (s) { return s.replace(/\{([^|}]+)\|([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>'); };
+
+/* ---------- 図(inline SVG。文字は読みやすいようひらがな・カタカナ) ---------- */
+var F = {};
+
+F.intro = '<svg class="fig" viewBox="0 0 640 360" role="img" aria-label="昼はあつくて汗をかく。朝と夜はさむくてふるえる。気温の差が大きい日のイメージ">' +
+  '<rect class="s" x="20" y="20" width="270" height="258" rx="18" style="fill:var(--warm-soft)"/>' +
+  '<rect class="s" x="350" y="20" width="270" height="258" rx="18" style="fill:var(--sel)"/>' +
+  '<use href="#i-sun" x="24" y="26" width="96" height="96"/>' +
+  '<path class="o" d="M40 150q8 -9 0 -18M62 150q8 -9 0 -18M84 150q8 -9 0 -18" style="stroke:var(--heat)"/>' +
+  '<use href="#i-tshirt" x="95" y="128" width="120" height="120"/>' +
+  '<circle class="s" cx="155" cy="100" r="34"/>' +
+  '<circle cx="143" cy="94" r="3.5" fill="currentColor"/><circle cx="167" cy="94" r="3.5" fill="currentColor"/>' +
+  '<ellipse cx="155" cy="115" rx="9" ry="7" fill="currentColor"/>' +
+  '<path class="s" transform="translate(204 84)" d="M0 -13Q10 2 0 11Q-10 2 0 -13Z" style="fill:var(--cold)"/>' +
+  '<path class="s" transform="translate(212 116)" d="M0 -13Q10 2 0 11Q-10 2 0 -13Z" style="fill:var(--cold)"/>' +
+  '<text x="155" y="270" font-size="32" text-anchor="middle" style="fill:var(--heat)">あつい！</text>' +
+  '<path class="o" d="M298 146H342" marker-start="url(#ah)" marker-end="url(#ah)" stroke-width="4"/>' +
+  '<path class="o" d="M395 48V92M376 59L414 81M376 81L414 59" style="stroke:var(--cold)" stroke-width="4"/>' +
+  '<path class="s" d="M590 42a26 26 0 1 0 0 50a20 20 0 1 1 0 -50Z"/>' +
+  '<use href="#i-cardi" x="425" y="128" width="120" height="120"/>' +
+  '<circle class="s" cx="485" cy="100" r="34"/>' +
+  '<circle cx="473" cy="94" r="3.5" fill="currentColor"/><circle cx="497" cy="94" r="3.5" fill="currentColor"/>' +
+  '<path class="o" d="M468 114l5 -6l5 6l5 -6l5 6l5 -6l5 6" stroke-width="3.5"/>' +
+  '<path class="o" d="M436 88q-9 9 0 18q9 9 0 18M534 88q9 9 0 18q-9 9 0 18" style="stroke:var(--cold)" stroke-width="4"/>' +
+  '<text x="485" y="270" font-size="32" text-anchor="middle" style="fill:var(--cold)">さむい！</text>' +
+  '<text x="155" y="304" font-size="28" text-anchor="middle">ひる</text>' +
+  '<text x="485" y="304" font-size="28" text-anchor="middle">あさ・よる</text>' +
+  '<text x="320" y="348" font-size="30" text-anchor="middle">きおんの さが おおきい！</text>' +
+  '</svg>';
+
+F.q1 = '<svg class="fig" viewBox="0 0 640 300" role="img" aria-label="朝の光をあびると、体の中の時計がリセットされ、リズムがととのう">' +
+  '<use href="#i-sun" x="20" y="30" width="140" height="140"/>' +
+  '<text x="90" y="215" font-size="26" text-anchor="middle">あさの</text>' +
+  '<text x="90" y="247" font-size="26" text-anchor="middle">ひかり</text>' +
+  '<line class="o" x1="170" y1="110" x2="245" y2="110" marker-end="url(#ah)"/>' +
+  '<text x="208" y="92" font-size="24" text-anchor="middle">あびる</text>' +
+  '<circle class="s" cx="330" cy="120" r="60"/>' +
+  '<path class="o" d="M330 72V82M330 158V168M282 120H292M368 120H378" stroke-width="4"/>' +
+  '<path class="o" d="M330 120V86M330 120L354 134" stroke-width="5"/>' +
+  '<path class="o" d="M262 72A76 76 0 0 1 398 72" marker-end="url(#ah)" stroke-width="4"/>' +
+  '<text x="330" y="215" font-size="26" text-anchor="middle">からだの とけい</text>' +
+  '<text x="330" y="250" font-size="30" text-anchor="middle" style="fill:var(--heat)">リセット！</text>' +
+  '<line class="o" x1="410" y1="120" x2="468" y2="120" marker-end="url(#ah)"/>' +
+  '<rect class="s" x="480" y="40" width="140" height="150" rx="14"/>' +
+  '<path class="o" d="M492 85q11 -34 22 0t22 0t22 0t22 0t22 0" stroke-width="5"/>' +
+  '<path class="o" d="M528 150L546 170L584 124" stroke-width="9" style="stroke:var(--good)"/>' +
+  '<text x="550" y="222" font-size="26" text-anchor="middle">リズムが</text>' +
+  '<text x="550" y="254" font-size="26" text-anchor="middle">ととのう</text>' +
+  '</svg>';
+
+F.q2 = '<svg class="fig" viewBox="0 0 640 400" role="img" aria-label="朝ごはんとあたたかい飲みものでからだがあたたまる。冷たいジュースだけだと、からだが冷える">' +
+  '<use href="#i-bowl" x="30" y="40" width="130" height="130"/>' +
+  '<rect class="s" x="185" y="82" width="64" height="70" rx="10"/>' +
+  '<path class="o" d="M249 98h12q14 0 14 20q0 20 -14 20h-12"/>' +
+  '<path class="o" d="M205 68q-8 -8 0 -16M229 68q-8 -8 0 -16"/>' +
+  '<line class="o" x1="300" y1="112" x2="368" y2="112" marker-end="url(#ah)"/>' +
+  '<rect class="s" x="405" y="30" width="30" height="120" rx="15"/>' +
+  '<rect x="412" y="62" width="16" height="90" style="fill:var(--heat)"/>' +
+  '<circle class="s" cx="420" cy="168" r="23" style="fill:var(--heat)"/>' +
+  '<text x="468" y="124" font-size="36">ぽかぽか</text>' +
+  '<text x="20" y="206" font-size="21">あさごはん ＋ あたたかい のみもの</text>' +
+  '<line class="o" x1="20" y1="222" x2="620" y2="222" stroke-width="2" stroke-dasharray="6 9"/>' +
+  '<path class="s" d="M70 246H132L122 326H80Z"/>' +
+  '<rect class="s" x="86" y="268" width="20" height="20" rx="4" style="fill:var(--sel)" transform="rotate(-12 96 278)"/>' +
+  '<rect class="s" x="104" y="290" width="18" height="18" rx="4" style="fill:var(--sel)" transform="rotate(10 113 299)"/>' +
+  '<path class="o" d="M120 228L106 276"/>' +
+  '<line class="o" x1="300" y1="296" x2="368" y2="296" marker-end="url(#ah)"/>' +
+  '<rect class="s" x="405" y="240" width="30" height="104" rx="15"/>' +
+  '<rect x="412" y="318" width="16" height="28" style="fill:var(--cold)"/>' +
+  '<circle class="s" cx="420" cy="362" r="23" style="fill:var(--cold)"/>' +
+  '<text x="468" y="308" font-size="36">ひえる</text>' +
+  '<text x="20" y="372" font-size="21">つめたい ジュースだけ</text>' +
+  '</svg>';
+
+F.q3 = '<svg class="fig" viewBox="0 0 640 360" role="img" aria-label="朝8度と夜9度は上着を着る。昼20度は脱ぐ。気温に合わせて自分で調整する">' +
+  '<text x="110" y="40" font-size="32" text-anchor="middle">あさ</text>' +
+  '<text x="110" y="84" font-size="36" text-anchor="middle" style="fill:var(--cold)">8℃</text>' +
+  '<use href="#i-cardi" x="25" y="105" width="170" height="170"/>' +
+  '<rect class="s" x="22" y="292" width="176" height="54" rx="27" style="fill:var(--warm-soft)"/>' +
+  '<text x="110" y="330" font-size="32" text-anchor="middle">きる</text>' +
+  '<text x="320" y="40" font-size="32" text-anchor="middle">ひる</text>' +
+  '<text x="320" y="84" font-size="36" text-anchor="middle" style="fill:var(--heat)">20℃</text>' +
+  '<use href="#i-tshirt" x="235" y="105" width="170" height="170"/>' +
+  '<rect class="s" x="232" y="292" width="176" height="54" rx="27" style="fill:var(--sel)"/>' +
+  '<text x="320" y="330" font-size="32" text-anchor="middle">ぬぐ</text>' +
+  '<text x="530" y="40" font-size="32" text-anchor="middle">よる</text>' +
+  '<text x="530" y="84" font-size="36" text-anchor="middle" style="fill:var(--cold)">9℃</text>' +
+  '<use href="#i-cardi" x="445" y="105" width="170" height="170"/>' +
+  '<rect class="s" x="442" y="292" width="176" height="54" rx="27" style="fill:var(--warm-soft)"/>' +
+  '<text x="530" y="330" font-size="32" text-anchor="middle">きる</text>' +
+  '</svg>';
+
+F.q4 = '<svg class="fig" viewBox="0 0 640 420" role="img" aria-label="首、手首、足首をあたためると、あたたまった血が体じゅうにめぐる">' +
+  '<path class="o" d="M142 130L98 228L86 292" stroke-width="13"/>' +
+  '<path class="o" d="M258 130L302 228L314 292" stroke-width="13"/>' +
+  '<path class="o" d="M172 228L166 330L162 384" stroke-width="15"/>' +
+  '<path class="o" d="M228 228L234 330L238 384" stroke-width="15"/>' +
+  '<path class="s" d="M150 110H250Q262 110 262 124V230H138V124Q138 110 150 110Z"/>' +
+  '<circle class="s" cx="200" cy="58" r="32"/>' +
+  '<path class="o" d="M200 90V110" stroke-width="10"/>' +
+  '<path class="s" d="M200 196C170 172 168 142 188 142C196 142 200 150 200 152C200 150 204 142 212 142C232 142 230 172 200 196Z" style="fill:var(--heat)"/>' +
+  '<circle cx="200" cy="104" r="27" fill="none" stroke-width="6" stroke-dasharray="9 7" style="stroke:var(--heat)"/>' +
+  '<circle cx="87" cy="290" r="23" fill="none" stroke-width="6" stroke-dasharray="9 7" style="stroke:var(--heat)"/>' +
+  '<circle cx="313" cy="290" r="23" fill="none" stroke-width="6" stroke-dasharray="9 7" style="stroke:var(--heat)"/>' +
+  '<circle cx="162" cy="364" r="23" fill="none" stroke-width="6" stroke-dasharray="9 7" style="stroke:var(--heat)"/>' +
+  '<circle cx="238" cy="364" r="23" fill="none" stroke-width="6" stroke-dasharray="9 7" style="stroke:var(--heat)"/>' +
+  '<line class="o" x1="230" y1="100" x2="372" y2="100" stroke-width="3"/>' +
+  '<line class="o" x1="338" y1="290" x2="372" y2="290" stroke-width="3"/>' +
+  '<line class="o" x1="263" y1="364" x2="372" y2="364" stroke-width="3"/>' +
+  '<text x="388" y="98" font-size="38">くび</text>' +
+  '<text x="388" y="132" font-size="22" class="m">ネックウォーマー</text>' +
+  '<text x="388" y="288" font-size="38">てくび</text>' +
+  '<text x="388" y="322" font-size="22" class="m">リストウォーマー</text>' +
+  '<text x="388" y="376" font-size="38">あしくび</text>' +
+  '<text x="388" y="406" font-size="22" class="m">くつした</text>' +
+  '</svg>';
+
+F.q5 = '<svg class="fig" viewBox="0 0 640 420" role="img" aria-label="お湯は38から40度のぬるめで10から15分。45度以上は熱すぎる">' +
+  '<text x="110" y="52" font-size="24" text-anchor="middle">つめたい</text>' +
+  '<text x="292" y="52" font-size="26" text-anchor="middle" style="fill:var(--good)">ちょうどいい</text>' +
+  '<text x="530" y="52" font-size="24" text-anchor="middle" style="fill:var(--heat)">あつすぎ</text>' +
+  '<rect x="40" y="70" width="140" height="40" style="fill:var(--sel)"/>' +
+  '<rect x="460" y="70" width="140" height="40" style="fill:url(#hatch)"/>' +
+  '<rect class="o" x="40" y="70" width="560" height="40" rx="8" stroke-width="3"/>' +
+  '<rect x="264" y="66" width="56" height="48" rx="6" stroke-width="6" style="fill:var(--good-bg);stroke:var(--good)"/>' +
+  '<path class="o" d="M180 70V110M460 70V110" stroke-width="2"/>' +
+  '<text x="40" y="146" font-size="22" text-anchor="middle">30℃</text>' +
+  '<text x="180" y="146" font-size="22" text-anchor="middle">35℃</text>' +
+  '<text x="320" y="146" font-size="22" text-anchor="middle">40℃</text>' +
+  '<text x="460" y="146" font-size="22" text-anchor="middle">45℃</text>' +
+  '<text x="600" y="146" font-size="22" text-anchor="middle">50℃</text>' +
+  '<text x="292" y="182" font-size="28" text-anchor="middle" style="fill:var(--good)">38〜40℃</text>' +
+  '<use href="#i-tub" x="45" y="222" width="180" height="180"/>' +
+  '<text x="135" y="412" font-size="24" text-anchor="middle">ぬるめの おゆ</text>' +
+  '<rect class="s" x="388" y="232" width="24" height="12" rx="3"/>' +
+  '<circle class="s" cx="400" cy="306" r="58"/>' +
+  '<path class="o" d="M400 262V272M400 340V350M356 306H366M434 306H444" stroke-width="4"/>' +
+  '<path class="o" d="M400 306V272M400 306L424 320" stroke-width="5"/>' +
+  '<text x="400" y="412" font-size="28" text-anchor="middle">10〜15ふん</text>' +
+  '<circle class="s" cx="545" cy="306" r="46"/>' +
+  '<path class="o" d="M527 296q6 -9 13 0M551 296q6 -9 13 0M527 316q18 18 36 0" stroke-width="4"/>' +
+  '<text x="545" y="412" font-size="28" text-anchor="middle">ほっ</text>' +
+  '</svg>';
+
+/* ---------- 問題と解説 ---------- */
+var Q = [
+  { stem: '{気温|きおん}の{変化|へんか}に{負|ま}けない{体|からだ}をつくるために、{朝|あさ}{起|お}きたらするとよいことはどれでしょう?',
+    opts: ['{部屋|へや}を{暗|くら}くしたまま、じっとする', 'カーテンをあけて、{朝|あさ}の{光|ひかり}をあびる', 'ふとんの{中|なか}で、ずっとスマホを{見|み}る'],
+    ans: 2, fig: F.q1,
+    cap: '{朝|あさ}の{光|ひかり} → {体内時計|たいないどけい}がリセット → リズムがととのう',
+    exp: ['{朝|あさ}の{光|ひかり}をあびると、{体|からだ}の{中|なか}の{時計|とけい}がリセットされます。', '{1日|いちにち}のリズムがととのいます。', 'リズムがととのうと、{気温|きおん}の{変化|へんか}の{影響|えいきょう}を{受|う}けにくくなります。'],
+    note: '{気温|きおん}の{差|さ}で{疲|つか}れるのは、{体温|たいおん}や{気分|きぶん}をととのえる{神経|しんけい}({自律神経|じりつしんけい})ががんばりすぎるからです。' },
+  { stem: '{気温|きおん}の{変化|へんか}に{負|ま}けにくい{体|からだ}のために、{朝|あさ}の{食|た}べものや{飲|の}みものはどれがよいでしょう?',
+    opts: ['{朝|あさ}ごはんを{食|た}べて、あたたかい{飲|の}みものを{飲|の}む', '{朝|あさ}ごはんはぬいて、{冷|つめ}たいジュースだけ{飲|の}む', 'おかしだけを{食|た}べる'],
+    ans: 1, fig: F.q2,
+    cap: 'あたたかい{朝|あさ}ごはんと{飲|の}みもの → {体|からだ}があたたまる',
+    exp: ['{朝|あさ}ごはんを{食|た}べると、{体|からだ}の{中|なか}で{熱|ねつ}がつくられます。', 'あたたかい{飲|の}みものは、{体|からだ}を{内側|うちがわ}からあたためます。', '{朝|あさ}ごはんをぬいたり、{冷|つめ}たいものだけだったりすると、{体|からだ}があたたまりにくくなります。'],
+    note: '' },
+  { stem: '{気温|きおん}の{差|さ}で{疲|つか}れないようにするために、{効果|こうか}のある{方法|ほうほう}はどれでしょう?',
+    opts: ['{冷|つめ}たい{飲|の}み{物|もの}をたくさん{飲|の}んで、{体|からだ}を{冷|ひ}やす', '{夜|よる}おそくまで{起|お}きて、{朝|あさ}はおそく{起|お}きる', '{脱|ぬ}ぎ{着|き}しやすい{服|ふく}を{持|も}って、{気温|きおん}に{合|あ}わせて{調整|ちょうせい}する'],
+    ans: 3, fig: F.q3,
+    cap: '{朝|あさ}と{夜|よる}は{着|き}る、{昼|ひる}は{脱|ぬ}ぐ',
+    exp: ['{寒|さむ}いときは{着|き}る。{暑|あつ}くなったら{脱|ぬ}ぐ。', '{自分|じぶん}で{調整|ちょうせい}できると、{体|からだ}の{負担|ふたん}が{減|へ}ります。', 'カーディガンやウィンドブレーカーを{1枚|いちまい}{持|も}ち{歩|ある}くのがおすすめです。'],
+    note: '{冷|つめ}たい{飲|の}み{物|もの}や{夜|よる}ふかしは、{体|からだ}のリズムをみだして{疲|つか}れやすくします。' },
+  { stem: '「さむいな」と{感|かん}じたとき、あたためると{体|からだ}じゅうがぽかぽかしてくる「{3|みっ}つの{首|くび}」があります。「{首|くび}」と、あと{2|ふた}つはどこでしょう?',
+    opts: ['ひざと ひじ', '{手首|てくび}と {足首|あしくび}', 'おなかと せなか'],
+    ans: 2, fig: F.q4,
+    cap: '{首|くび}・{手首|てくび}・{足首|あしくび}をあたためる',
+    exp: ['{首|くび}・{手首|てくび}・{足首|あしくび}には、{太|ふと}い{血管|けっかん}が{皮膚|ひふ}の{近|ちか}くを{通|とお}っています。', 'ここをあたためると、あたたまった{血|ち}が{体|からだ}じゅうにめぐります。', 'ネックウォーマー、リストウォーマー、くつ{下|した}で{手軽|てがる}にあたためられます。'],
+    note: '' },
+  { stem: '{夜|よる}のおふろで{寒暖差疲労|かんだんさひろう}の{対策|たいさく}をするとき、おすすめの{入|はい}り{方|かた}はどれでしょう?',
+    opts: ['38〜40℃くらいのぬるめのお{湯|ゆ}に、10〜15{分|ふん}{入|はい}る', '45℃{以上|いじょう}の{熱|あつ}いお{湯|ゆ}に、{長|なが}く{入|はい}る', '{冷|つめ}たい{水|みず}に{入|はい}る'],
+    ans: 1, fig: F.q5,
+    cap: '38〜40℃で10〜15{分|ふん}。{熱|あつ}すぎるお{湯|ゆ}はさける',
+    exp: ['ぬるめのお{湯|ゆ}にゆっくり{入|はい}ると、{体|からだ}がリラックスして{血|ち}のめぐりがよくなります。', '{熱|あつ}すぎるお{湯|ゆ}は{体|からだ}に{負担|ふたん}がかかり、のぼせることもあります。'],
+    note: 'お{風呂|ふろ}に{入|はい}れない{日|ひ}は、シャワーを{首|くび}・{肩|かた}・{足|あし}もとに{当|あ}てたり、{足|あし}だけお{湯|ゆ}につけたりしても{効果|こうか}があります。' }
+];
+
+var PLANS = [
+  { icon: 'i-sun', t: '{朝|あさ}の{光|ひかり}をあびる' },
+  { icon: 'i-bowl', t: 'あたたかい{朝|あさ}ごはんと{飲|の}みもの' },
+  { icon: 'i-cardi', t: '{脱|ぬ}ぎ{着|き}しやすい{服|ふく}' },
+  { icon: 'i-neck', t: '{首|くび}・{手首|てくび}・{足首|あしくび}をあたためる' },
+  { icon: 'i-tub', t: 'ぬるめのおふろ' }
+];
+
+/* ---------- 画面の順番 ---------- */
+var steps = [{ id: 'intro', k: 'i' }];
+Q.forEach(function (q, i) {
+  steps.push({ id: 'q' + (i + 1), k: 'q', i: i });
+  steps.push({ id: 'a' + (i + 1), k: 'a', i: i });
+});
+steps.push({ id: 'summary', k: 's' });
+
+var idx = 0, picked = {}, plan = -1;
+var stage = document.getElementById('stage');
+var prog = document.getElementById('prog');
+var nextBtn = document.getElementById('next');
+var prevBtn = document.getElementById('prev');
+var tog = document.getElementById('tog');
+var SEGS = ['はじめ', '1', '2', '3', '4', '5', 'まとめ'];
+
+document.getElementById('brand').innerHTML = rb('{寒暖差疲労|かんだんさひろう}クイズ');
+
+function segOf(s) { return s.k === 'i' ? 0 : s.k === 's' ? 6 : s.i + 1; }
+function firstStepOfSeg(n) { return n === 0 ? 0 : n === 6 ? steps.length - 1 : 1 + (n - 1) * 2; }
+
+function vIntro() {
+  return '<div class="grid">' +
+    '<div>' +
+    '<h1 class="h1">' + rb('{寒暖差疲労|かんだんさひろう}クイズ') + '</h1>' +
+    '<p class="lead">' + rb('{季節|きせつ}の{変|か}わり{目|め}など、1{日|にち}の{気温|きおん}の{差|さ}が{大|おお}きいと、{体|からだ}が{疲|つか}れやすくなったり、イライラしたり{落|お}ち{込|こ}んだりしがちです。') + '</p>' +
+    '<ul class="chips"><li>' + rb('{疲|つか}れやすい') + '</li><li>' + rb('イライラ・{落|お}ち{込|こ}む') + '</li><li>' + rb('くしゃみ・{鼻水|はなみず}') + '</li></ul>' +
+    '<p class="lead">' + rb('これを「{寒暖差疲労|かんだんさひろう}」といいます。') + '</p>' +
+    '<p class="lead strong">' + rb('では、そうなりにくくするために、どうしたらいいでしょう?') + '</p>' +
+    '</div>' +
+    '<figure class="figbox">' + F.intro + '<figcaption>' + rb('{昼|ひる}はあつく、{朝|あさ}と{夜|よる}はさむい。{気温|きおん}の{差|さ}が{大|おお}きい{日|ひ}のイメージ') + '</figcaption></figure>' +
+    '</div>';
+}
+
+function vQ(i) {
+  var q = Q[i];
+  var opts = q.opts.map(function (t, k) {
+    var on = picked[i] === k + 1;
+    return '<button type="button" class="opt' + (on ? ' sel' : '') + '" data-opt="' + (k + 1) + '" aria-pressed="' + on + '">' +
+      '<span class="num">' + (k + 1) + '</span><span class="txt">' + rb(t) + '</span></button>';
+  }).join('');
+  return '<div class="qhead"><div class="qbadge">' + rb('{問|もん}') + (i + 1) + '</div><h2 class="stem">' + rb(q.stem) + '</h2></div>' +
+    '<div class="opts" role="group" aria-label="こたえのえらびかた">' + opts + '</div>' +
+    '<p class="hint">' + rb('{番号|ばんごう}をタップすると、えらんだ{印|しるし}がつきます。') + '</p>';
+}
+
+function vA(i) {
+  var q = Q[i];
+  return '<div class="ans"><div class="ans-label">' + rb('{答|こた}え') + '</div><div class="ans-num">' + q.ans + '</div>' +
+    '<div class="ans-txt">' + rb(q.opts[q.ans - 1]) + '</div></div>' +
+    '<div class="grid fig-first">' +
+    '<figure class="figbox">' + q.fig + '<figcaption>' + rb(q.cap) + '</figcaption></figure>' +
+    '<div><ul class="exp">' + q.exp.map(function (t) { return '<li><span>' + rb(t) + '</span></li>'; }).join('') + '</ul>' +
+    (q.note ? '<p class="note"><b>' + rb('ひとこと') + '</b>' + rb(q.note) + '</p>' : '') + '</div>' +
+    '</div>';
+}
+
+function vS() {
+  return '<h2 class="h1" style="font-size:clamp(24px,5vmin,60px)">' + rb('{寒暖差疲労|かんだんさひろう}に{負|ま}けない 5つのこと') + '</h2>' +
+    '<p class="lead strong">' + rb('{今日|きょう}から やってみたいことを {1|ひと}つ えらぼう。') + '</p>' +
+    '<div class="cards">' + PLANS.map(function (p, k) {
+      var on = plan === k;
+      return '<button type="button" class="card' + (on ? ' sel' : '') + '" data-plan="' + k + '" aria-pressed="' + on + '">' +
+        '<svg viewBox="0 0 140 140" aria-hidden="true"><use href="#' + p.icon + '" width="140" height="140"/></svg>' +
+        '<span>' + rb(p.t) + '</span><span class="chk">' + (on ? rb('{決|き}めた!') : '') + '</span></button>';
+    }).join('') + '</div>';
+}
+
+function nextLabel(s) {
+  if (s.k === 'i') return 'はじめる';
+  if (s.k === 'q') return rb('{答|こた}えを {見|み}る');
+  if (s.k === 'a') return s.i === Q.length - 1 ? 'まとめへ' : rb('つぎの{問題|もんだい}');
+  return 'さいしょにもどる';
+}
+
+function render() {
+  var s = steps[idx];
+  stage.innerHTML = s.k === 'i' ? vIntro() : s.k === 'q' ? vQ(s.i) : s.k === 'a' ? vA(s.i) : vS();
+  stage.scrollTop = 0;
+  nextBtn.innerHTML = nextLabel(s);
+  prevBtn.hidden = idx === 0;
+  var cur = segOf(s);
+  prog.innerHTML = SEGS.map(function (t, n) {
+    return '<button type="button" class="seg' + (n < cur ? ' done' : '') + '" data-seg="' + n + '"' + (n === cur ? ' aria-current="step"' : '') +
+      ' aria-label="' + (n === 0 ? 'はじめ' : n === 6 ? 'まとめ' : '問' + n) + '">' + t + '</button>';
+  }).join('');
+}
+
+function go(n) {
+  n = Math.max(0, Math.min(steps.length - 1, n));
+  if (n === idx) return;
+  idx = n;
+  render();
+  try { if (location.hash !== '#' + steps[idx].id) location.hash = steps[idx].id; } catch (e) {}
+}
+function next() { go(idx === steps.length - 1 ? 0 : idx + 1); }
+function prev() { go(idx - 1); }
+
+nextBtn.addEventListener('click', next);
+prevBtn.addEventListener('click', prev);
+prog.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-seg]');
+  if (b) go(firstStepOfSeg(+b.dataset.seg));
+});
+stage.addEventListener('click', function (e) {
+  var s = steps[idx];
+  var o = e.target.closest('[data-opt]');
+  if (o && s.k === 'q') {
+    var v = +o.dataset.opt;
+    picked[s.i] = picked[s.i] === v ? 0 : v;
+    stage.querySelectorAll('[data-opt]').forEach(function (b) {
+      var on = picked[s.i] === +b.dataset.opt;
+      b.classList.toggle('sel', on);
+      b.setAttribute('aria-pressed', on);
+    });
+    return;
+  }
+  var p = e.target.closest('[data-plan]');
+  if (p && s.k === 's') {
+    var k = +p.dataset.plan;
+    plan = plan === k ? -1 : k;
+    render();
+  }
+});
+
+function setRuby(on) {
+  document.body.classList.toggle('noruby', !on);
+  tog.textContent = 'ふりがな ' + (on ? 'あり' : 'なし');
+  tog.setAttribute('aria-pressed', on);
+  try { localStorage.setItem('kandan-ruby', on ? '1' : '0'); } catch (e) {}
+}
+tog.addEventListener('click', function () { setRuby(document.body.classList.contains('noruby')); });
+try { if (localStorage.getItem('kandan-ruby') === '0') setRuby(false); } catch (e) {}
+
+document.addEventListener('keydown', function (e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  var onBtn = e.target && e.target.tagName === 'BUTTON';
+  var k = e.key;
+  if (k === 'ArrowRight' || k === 'PageDown') { e.preventDefault(); next(); }
+  else if (k === 'ArrowLeft' || k === 'PageUp') { e.preventDefault(); prev(); }
+  else if ((k === ' ' || k === 'Enter') && !onBtn) { e.preventDefault(); next(); }
+  else if (/^[1-3]$/.test(k) && steps[idx].k === 'q') {
+    var b = stage.querySelector('[data-opt="' + k + '"]');
+    if (b) b.click();
+  }
+});
+
+function fromHash() {
+  var h = (location.hash || '').replace('#', '');
+  for (var n = 0; n < steps.length; n++) {
+    if (steps[n].id === h) { if (n !== idx) { idx = n; render(); } return true; }
+  }
+  return false;
+}
+window.addEventListener('hashchange', fromHash);
+render();
+fromHash();
+</script>
+
+</body>
+</html>
